@@ -1,4 +1,6 @@
-#!/Users/sanjana/python/SepsisPrediction/backend/venv/bin/python3
+#!/bin/sh
+'''exec' "/Volumes/Nayu 1TB/PROGRAMS/SepsisPrediction/backend/venv/bin/python3.12" "$0" "$@"
+' '''
 # -*- coding: utf-8 -*-
 import re
 import sys
