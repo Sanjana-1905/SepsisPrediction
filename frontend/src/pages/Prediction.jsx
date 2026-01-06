@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import Tesseract from 'tesseract.js';
 import { 
-  Upload, Activity, AlertTriangle, FileText, CheckCircle, Loader2
+  Upload, Activity, AlertTriangle, FileText, CheckCircle, Loader2, Eye 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
@@ -14,9 +15,7 @@ const CATEGORIES = {
   Info_Scores: ['Age', 'Gender', 'ICULOS', 'Hour', 'SOFA_score', 'SOFA_cardio', 'Shock_Index', 'MAP_Calc']
 };
 
-// UPDATED: Exact Clinical Normal Ranges from your provided data
 const THRESHOLDS = {
-  // Vitals
   HR: { min: 60, max: 100, unit: 'bpm' },
   O2Sat: { min: 95, max: 100, unit: '%' },
   Temp: { min: 36.1, max: 37.2, unit: '°C' },
@@ -24,47 +23,11 @@ const THRESHOLDS = {
   MAP: { min: 70, max: 105, unit: 'mmHg' },
   DBP: { min: 60, max: 90, unit: 'mmHg' },
   Resp: { min: 12, max: 20, unit: '/min' },
-
-  // Labs & Chem
-  EtCO2: { min: 35, max: 45, unit: 'mmHg' },
-  BaseExcess: { min: -2, max: 2, unit: 'mEq/L' },
-  HCO3: { min: 22, max: 26, unit: 'mEq/L' },
-  FiO2: { min: 21, max: 100, unit: '%' }, // Usually room air is 21%, up to 100% on support
-  pH: { min: 7.35, max: 7.45, unit: 'pH' },
-  PaCO2: { min: 35, max: 45, unit: 'mmHg' },
-  SaO2: { min: 95, max: 100, unit: '%' },
-  AST: { min: 10, max: 40, unit: 'U/L' },
-  BUN: { min: 7, max: 20, unit: 'mg/dL' },
-  Alkalinephos: { min: 44, max: 147, unit: 'U/L' },
-  Calcium: { min: 8.5, max: 10.5, unit: 'mg/dL' },
-  Chloride: { min: 98, max: 107, unit: 'mEq/L' },
-  Creatinine: { min: 0.6, max: 1.2, unit: 'mg/dL' },
-  Bilirubin_direct: { min: 0, max: 0.3, unit: 'mg/dL' },
-  Glucose: { min: 70, max: 100, unit: 'mg/dL' },
-
-  // Markers
   Lactate: { min: 0.5, max: 2.0, unit: 'mmol/L' },
-  Magnesium: { min: 1.7, max: 2.2, unit: 'mg/dL' },
-  Phosphate: { min: 2.5, max: 4.5, unit: 'mg/dL' },
-  Potassium: { min: 3.5, max: 5.0, unit: 'mEq/L' },
-  Bilirubin_total: { min: 0.3, max: 1.2, unit: 'mg/dL' },
-  TroponinI: { min: 0, max: 0.04, unit: 'ng/mL' },
-  Hct: { min: 36, max: 48, unit: '%' },
-  Hgb: { min: 12, max: 16, unit: 'g/dL' },
-  PTT: { min: 25, max: 35, unit: 'sec' },
+  Glucose: { min: 70, max: 100, unit: 'mg/dL' },
   WBC: { min: 4.5, max: 11.0, unit: 'K/μL' },
-  Fibrinogen: { min: 200, max: 400, unit: 'mg/dL' },
+  Creatinine: { min: 0.6, max: 1.2, unit: 'mg/dL' },
   Platelets: { min: 150, max: 450, unit: 'K/μL' },
-
-  // Scores & Info (Ranges indicate "Normal/Safe")
-  Age: { min: 0, max: 120, unit: 'yrs' },
-  Gender: { min: 0, max: 1, unit: '' }, // 0 or 1
-  ICULOS: { min: 0, max: 100, unit: 'days' }, // No strict "normal", but helpful for context
-  Hour: { min: 0, max: 72, unit: 'hrs' },
-  SOFA_score: { min: 0, max: 2, unit: 'pts' }, // >2 is generally bad
-  SOFA_cardio: { min: 0, max: 0, unit: 'pts' }, // 0 is normal
-  Shock_Index: { min: 0.5, max: 0.9, unit: '' },
-  MAP_Calc: { min: 70, max: 105, unit: 'mmHg' }
 };
 
 const getDefaultFormData = () => ({
@@ -88,9 +51,10 @@ export default function Prediction() {
   const [formData, setFormData] = useState(getDefaultFormData());
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [scanStatus, setScanStatus] = useState(null); 
+  const [scanStatus, setScanStatus] = useState('idle');
   const [activeTab, setActiveTab] = useState('Vitals');
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [debugText, setDebugText] = useState('');
 
   const isCritical = (key, value) => {
     if (!THRESHOLDS[key]) return false;
@@ -105,7 +69,6 @@ export default function Prediction() {
     if (dataToSend.SOFA_cardio > 0 && dataToSend.SOFA_score < dataToSend.SOFA_cardio) {
       dataToSend.SOFA_score = dataToSend.SOFA_cardio;
     }
-    // Auto-calculate MAP if missing
     if ((!dataToSend.MAP || dataToSend.MAP === 0) && dataToSend.SBP && dataToSend.DBP) {
        dataToSend.MAP = (dataToSend.SBP + (2 * dataToSend.DBP)) / 3;
     }
@@ -124,34 +87,106 @@ export default function Prediction() {
     setResult(null);
   };
 
+  // --- UPDATED PARSER: FLATTENED TEXT SCAN ---
+  // This ignores newlines and table structures, simply finding "KEYWORD" then grabbing the NEXT NUMBER.
+  const parseExtractedText = (text) => {
+    const extracted = {};
+    
+    // 1. Flatten text: Replace newlines with spaces, lowercase everything
+    const cleanText = text.replace(/\n/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+    
+    console.log("Flattened Text:", cleanText);
+
+    // Exact keywords from your "City Central Hospital" report
+    const mapping = {
+      'heart rate': 'HR',
+      'systolic bp': 'SBP',
+      'diastolic bp': 'DBP',
+      'oxygen saturation': 'O2Sat',
+      'body temperature': 'Temp',
+      'wbc count': 'WBC',
+      'serum lactate': 'Lactate',
+      'creatinine': 'Creatinine',
+      'platelet count': 'Platelets',
+      'blood glucose': 'Glucose'
+    };
+
+    Object.keys(mapping).forEach(searchPhrase => {
+      // Find where the phrase starts
+      const index = cleanText.indexOf(searchPhrase);
+      
+      if (index !== -1) {
+        // Create a search window starting immediately after the phrase
+        // We look at the next 50 characters to find the value
+        const startSearch = index + searchPhrase.length;
+        const windowText = cleanText.substring(startSearch, startSearch + 50);
+        
+        // Regex: Find the first integer or decimal number
+        // e.g. "105 bpm" -> matches "105"
+        // e.g. "14.2 $10^9" -> matches "14.2"
+        const match = windowText.match(/(\d+(\.\d+)?)/);
+        
+        if (match) {
+          const val = parseFloat(match[0]);
+          if (!isNaN(val)) {
+             const appKey = mapping[searchPhrase];
+             extracted[appKey] = val;
+             console.log(`Found ${appKey}: ${val}`);
+          }
+        }
+      }
+    });
+
+    return extracted;
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setScanStatus('scanning');
     setUploadedFile(file.name);
+    setDebugText('Initializing Tesseract...');
 
-    // Simulate scanning delay then populate EXACT values from your image
-    setTimeout(() => {
-      const extractedFromImage = {
-        // Values from "City Central Hospital" Report (Patient 4492-X)
-        HR: 155,         // Tachycardia
-        SBP: 75,         // Hypotension
-        DBP: 45,         // Low Diastolic
-        O2Sat: 84,       // Hypoxia
-        Temp: 40.2,      // High Fever
-        WBC: 38.5,       // Severe Leukocytosis
-        Lactate: 7.8,    // Critical Lactate
-        Creatinine: 3.2, // Kidney Stress
-        Platelets: 42,   // Thrombocytopenia
-        Glucose: 280     // Hyperglycemia
-      };
-      
-      setFormData(prev => ({ ...prev, ...extractedFromImage }));
-      setScanStatus('success');
-      // Auto-switch to Vitals tab to show the red fields immediately
-      setActiveTab('Vitals');
-    }, 1500);
+    try {
+      let extractedData = {};
+
+      if (file.type.startsWith('image/')) {
+        const worker = await Tesseract.createWorker('eng');
+        // PSM 3 = Auto page segmentation (Robust for tables/spreadsheets)
+        await worker.setParameters({
+          tessedit_pageseg_mode: Tesseract.PSM.AUTO, 
+        });
+        
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
+        
+        setDebugText(text); // Show raw text
+        extractedData = parseExtractedText(text);
+      } 
+      else if (file.type === 'text/csv' || file.type === 'text/plain') {
+        const text = await file.text();
+        setDebugText(text);
+        extractedData = parseExtractedText(text);
+      }
+
+      if (Object.keys(extractedData).length > 0) {
+        setFormData(prev => ({ ...prev, ...extractedData }));
+        setScanStatus('success');
+        
+        // Auto-switch tabs based on critical findings
+        if (extractedData.Lactate || extractedData.WBC) setActiveTab('Labs_Markers');
+        if (extractedData.HR || extractedData.SBP) setActiveTab('Vitals');
+      } else {
+        setScanStatus('error');
+        alert("Text read, but no matching parameters found. Ensure image is clear.");
+      }
+
+    } catch (err) {
+      console.error(err);
+      setScanStatus('error');
+      setDebugText("Error: " + err.message);
+    }
   };
 
   return (
@@ -177,27 +212,45 @@ export default function Prediction() {
           <div className="lg:col-span-2 space-y-6">
             
             {/* File Upload Card */}
-            <div className={`bg-white p-6 rounded-xl border transition-colors shadow-sm flex items-center justify-between ${scanStatus === 'success' ? 'border-green-500 bg-green-50' : 'border-slate-200'}`}>
-               <div>
-                  <h3 className="font-bold text-[#1a3c5e] flex items-center gap-2">
-                    <Upload size={18}/> 
-                    {scanStatus === 'scanning' ? 'Scanning Report...' : 'Auto-Extract Data'}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1">Supports PDF, JPG, CSV lab reports</p>
+            <div className={`bg-white p-6 rounded-xl border transition-colors shadow-sm flex flex-col gap-4 ${scanStatus === 'success' ? 'border-green-500 bg-green-50' : 'border-slate-200'}`}>
+               <div className="flex items-center justify-between">
+                 <div>
+                    <h3 className="font-bold text-[#1a3c5e] flex items-center gap-2">
+                      <Upload size={18}/> 
+                      {scanStatus === 'scanning' ? 'Analysing Report...' : 'Auto-Extract Data'}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">Supports Images (OCR) & Text Files</p>
+                 </div>
+                 <div className="flex items-center gap-4">
+                   {uploadedFile && (
+                     <span className="text-xs font-bold flex items-center gap-1 text-[#1a3c5e]">
+                       {scanStatus === 'scanning' && <Loader2 size={12} className="animate-spin"/>}
+                       {scanStatus === 'success' && <CheckCircle size={12} className="text-green-600"/>}
+                       {uploadedFile}
+                     </span>
+                   )}
+                   <label className={`cursor-pointer px-4 py-2 rounded text-sm font-bold transition flex items-center gap-2 ${scanStatus === 'scanning' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-100 hover:bg-slate-200 text-[#1a3c5e]'}`}>
+                     {scanStatus === 'scanning' ? 'Processing...' : 'Browse Files'}
+                     <input 
+                      type="file" 
+                      className="hidden" 
+                      onChange={handleFileUpload} 
+                      accept=".csv,.txt,image/*" 
+                      disabled={scanStatus === 'scanning'}
+                     />
+                   </label>
+                 </div>
                </div>
-               <div className="flex items-center gap-4">
-                 {uploadedFile && (
-                   <span className="text-xs font-bold flex items-center gap-1 text-[#1a3c5e]">
-                     {scanStatus === 'scanning' && <Loader2 size={12} className="animate-spin"/>}
-                     {scanStatus === 'success' && <CheckCircle size={12} className="text-green-600"/>}
-                     {uploadedFile}
-                   </span>
-                 )}
-                 <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-[#1a3c5e] px-4 py-2 rounded text-sm font-bold transition flex items-center gap-2">
-                   Browse Files
-                   <input type="file" className="hidden" onChange={handleFileUpload} accept=".csv,.json,.txt,.pdf,image/*" />
-                 </label>
-               </div>
+
+               {/* Raw Text Preview for Debugging */}
+               {debugText && (
+                 <div className="mt-2 p-3 bg-slate-100 rounded border border-slate-300 shadow-inner max-h-32 overflow-y-auto">
+                   <p className="text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-1 sticky top-0 bg-slate-100">
+                     <Eye size={10}/> RAW OCR TEXT (DEBUG)
+                   </p>
+                   <pre className="text-[10px] text-slate-600 font-mono whitespace-pre-wrap">{debugText}</pre>
+                 </div>
+               )}
             </div>
 
             {/* Input Tabs */}
@@ -233,7 +286,6 @@ export default function Prediction() {
                               : 'border-slate-300 text-slate-800 focus:border-[#1a3c5e] focus:ring-1 focus:ring-[#1a3c5e]'
                             }`}
                         />
-                         {/* Show normal range tooltip if available */}
                          {THRESHOLDS[field] && (
                           <div className={`text-[10px] mt-1 transition-opacity ${critical ? 'text-red-500 opacity-100 font-bold' : 'text-slate-400 opacity-0 group-hover:opacity-100'}`}>
                             Range: {THRESHOLDS[field].min} - {THRESHOLDS[field].max} {THRESHOLDS[field].unit}
@@ -273,7 +325,6 @@ export default function Prediction() {
                 </div>
 
                 <div className="p-6">
-                   {/* Gauge Graphic */}
                    <div className="h-48 w-full relative min-h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <RadialBarChart 
@@ -293,7 +344,6 @@ export default function Prediction() {
                       </div>
                    </div>
 
-                   {/* Probabilities */}
                    <div className="space-y-3 mt-4">
                       {Object.entries(result.probabilities).map(([key, val]) => (
                         <div key={key} className="flex items-center justify-between text-sm">
@@ -303,7 +353,6 @@ export default function Prediction() {
                       ))}
                    </div>
                    
-                   {/* Info Box */}
                    {result.override_reason && (
                       <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded text-xs text-red-700">
                         <strong>Guardrail Active:</strong> {result.override_reason}
