@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+:root {
+  --hospital-blue: #ebf2f6;
+  --accent-blue: #6d98af;
+  --dark-text: #1a2b3c;
+  --cyber-dark: #05070a;
+  --cyber-cyan: #00f0ff;
+  --cyber-cyan-dark: #00a8b8;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Critical Pulse Animation */
+@keyframes critical-pulse {
+  0% {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    border-color: #b91c1c;
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.critical-glow {
+  animation: critical-pulse 1.5s infinite;
+  border-width: 2px !important;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Scrollbar styling for dark mode */
+.dark-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 240, 255, 0.05);
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.2);
+  border-radius: 4px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.3);
+}
