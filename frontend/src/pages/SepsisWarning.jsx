@@ -23,10 +23,16 @@ export default function SepsisWarning() {
   const handlePredict = async () => {
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:8000/sepsis-warning', formData);
+      const res = await axios.post('http://localhost:8000/predict', formData);
       setResult(res.data);
     } catch (e) {
-      alert("Error connecting to backend: " + (e.response?.data?.detail || e.message));
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      const data = e?.response?.data;
+      const url = e?.config?.url;
+      alert(
+        `Backend request failed.\nURL: ${url || 'unknown'}\nStatus: ${status || 'no response'}\nDetail: ${detail || ''}\nResponse: ${data ? JSON.stringify(data) : ''}`
+      );
     }
     setLoading(false);
   };

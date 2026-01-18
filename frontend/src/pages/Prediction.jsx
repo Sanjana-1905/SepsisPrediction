@@ -56,6 +56,18 @@ export default function Prediction() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [debugText, setDebugText] = useState('');
 
+  const getPrimaryProbKey = (res) => {
+    const pred = Number(res?.prediction);
+    if (pred === 0) return 'healthy';
+    if (pred === 1) return 'mild';
+    if (pred === 2) return 'severe';
+
+    const sev = String(res?.severity || '').toLowerCase();
+    if (sev.includes('mild')) return 'mild';
+    if (sev.includes('severe') || sev.includes('critical')) return 'severe';
+    return 'healthy';
+  };
+
   const isCritical = (key, value) => {
     if (!THRESHOLDS[key]) return false;
     return value < THRESHOLDS[key].min || value > THRESHOLDS[key].max;
@@ -74,10 +86,16 @@ export default function Prediction() {
     }
     
     try {
-      const res = await axios.post('http://localhost:8000/predict', dataToSend);
+      const res = await axios.post('http://localhost:8000/severity', dataToSend);
       setResult(res.data);
     } catch (e) {
-      alert("Error connecting to backend.");
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      const data = e?.response?.data;
+      const url = e?.config?.url;
+      alert(
+        `Backend request failed.\nURL: ${url || 'unknown'}\nStatus: ${status || 'no response'}\nDetail: ${detail || ''}\nResponse: ${data ? JSON.stringify(data) : ''}`
+      );
     }
     setLoading(false);
   };
@@ -325,13 +343,20 @@ export default function Prediction() {
                 </div>
 
                 <div className="p-6">
+                   {(() => {
+                     const primaryKey = getPrimaryProbKey(result);
+                     const primaryValue = Number(result?.probabilities?.[primaryKey] ?? 0);
+                     const primaryLabel = primaryKey === 'healthy' ? 'Healthy' : primaryKey === 'mild' ? 'Mild' : 'Severe';
+                     const primaryFill = primaryKey === 'healthy' ? '#059669' : primaryKey === 'mild' ? '#f59e0b' : '#dc2626';
+
+                     return (
                    <div className="h-48 w-full relative min-h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <RadialBarChart 
                           innerRadius="70%" 
                           outerRadius="100%" 
                           barSize={20} 
-                          data={[{ name: 'risk', value: result.probabilities.severe, fill: '#1a3c5e' }]} 
+                          data={[{ name: 'prob', value: primaryValue, fill: primaryFill }]} 
                           startAngle={180} 
                           endAngle={0}
                         >
@@ -339,16 +364,22 @@ export default function Prediction() {
                         </RadialBarChart>
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
-                         <span className="text-4xl font-bold text-[#1a3c5e]">{result.probabilities.severe.toFixed(1)}%</span>
-                         <span className="text-xs text-slate-500 uppercase">Severe Risk</span>
+                         <span className="text-4xl font-bold text-[#1a3c5e]">{primaryValue.toFixed(1)}%</span>
+                         <span className="text-xs text-slate-500 uppercase">{primaryLabel} %</span>
                       </div>
                    </div>
+                     );
+                   })()}
 
                    <div className="space-y-3 mt-4">
-                      {Object.entries(result.probabilities).map(([key, val]) => (
+                      {[
+                        ['healthy', result.probabilities.healthy],
+                        ['mild', result.probabilities.mild],
+                        ['severe', result.probabilities.severe],
+                      ].map(([key, val]) => (
                         <div key={key} className="flex items-center justify-between text-sm">
                            <span className="uppercase text-slate-500 font-bold">{key}</span>
-                           <span className="font-mono font-bold">{val.toFixed(1)}%</span>
+                           <span className="font-mono font-bold">{Number(val).toFixed(1)}%</span>
                         </div>
                       ))}
                    </div>
