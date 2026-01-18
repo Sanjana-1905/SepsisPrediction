@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import Prediction from './pages/Prediction';
 import ModelArchitecture from './pages/ModelArchitecture';
+import SepsisWarning from './pages/SepsisWarning';
 
 // Scroll to top on route change
 const ScrollToTop = () => {
@@ -23,6 +24,7 @@ export default function App() {
         <div className="flex-grow">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/sepsis-warning" element={<SepsisWarning />} />
             <Route path="/predict" element={<Prediction />} />
             <Route path="/model" element={<ModelArchitecture />} />
           </Routes>

@@ -30,6 +30,12 @@ export default function Navbar() {
             HOME
           </Link>
           <Link 
+            to="/sepsis-warning" 
+            className={`transition-colors hover:text-[#1a3c5e] ${isActive('/sepsis-warning') ? 'text-[#1a3c5e] font-bold' : ''}`}
+          >
+            EARLY WARNING
+          </Link>
+          <Link 
             to="/predict" 
             className={`transition-colors hover:text-[#1a3c5e] ${isActive('/predict') ? 'text-[#1a3c5e] font-bold' : ''}`}
           >
