@@ -2,10 +2,40 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { 
   AlertTriangle, Activity, Heart, Thermometer, Droplet, 
-  TrendingUp, Loader2, CheckCircle, AlertCircle
+  TrendingUp, Loader2, CheckCircle, AlertCircle, Pill, Stethoscope, Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RadialBarChart, RadialBar, ResponsiveContainer, Cell } from 'recharts';
+
+// Clinical Decision Support Function
+const getClinicalSuggestions = (riskScore, lactateVal, suspectedSource = "Unknown") => {
+  const suggestions = [];
+  
+  // 1. General Sepsis Bundle (Always triggered if risk >= 0.30)
+  if (riskScore >= 0.30) {
+    suggestions.push("🔹 Order Blood Cultures (before antibiotics).");
+    suggestions.push("🔹 Measure/Repeat Lactate level.");
+  }
+  
+  // 2. Specific Action based on Lactate Rise
+  if (lactateVal >= 2.0) {
+    suggestions.push("🔹 Initiate fluid resuscitation: 30mL/kg crystalloid.");
+  }
+  
+  // 3. Antibiotic Logic based on Clinician Input
+  const antibioticMap = {
+    "Lungs (Pneumonia)": "Ceftriaxone + Azithromycin",
+    "Urinary (UTI)": "Ciprofloxacin or Ceftriaxone",
+    "Abdominal": "Piperacillin/Tazobactam (Zosyn)",
+    "Skin/Soft Tissue": "Vancomycin",
+    "Unknown": "Vancomycin + Zosyn (Broad Spectrum Coverage)"
+  };
+  
+  const rx = antibioticMap[suspectedSource] || "Consult ID Specialist";
+  suggestions.push(`💊 Suggested Antibiotics: ${rx}`);
+  
+  return suggestions;
+};
 
 export default function SepsisWarning() {
   const [formData, setFormData] = useState({
@@ -19,6 +49,7 @@ export default function SepsisWarning() {
   
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [suspectedSource, setSuspectedSource] = useState('Unknown');
 
   const handlePredict = async () => {
     setLoading(true);
@@ -329,7 +360,7 @@ export default function SepsisWarning() {
                         barSize={30} 
                         data={[{ name: 'risk', value: result.risk_percentage, fill: getRiskColor(result.risk_score) }]} 
                         startAngle={180} 
-                        endAngle={0}
+                        endAngle={180 - (result.risk_percentage / 100) * 180}
                       >
                         <RadialBar 
                           dataKey="value" 
@@ -394,6 +425,7 @@ export default function SepsisWarning() {
                     </div>
                   )}
                 </div>
+
               </motion.div>
             ) : (
               <div className="bg-slate-100 rounded-xl border-2 border-dashed border-slate-300 p-12 text-center h-96 flex flex-col items-center justify-center text-slate-400">
@@ -406,6 +438,167 @@ export default function SepsisWarning() {
           </div>
 
         </div>
+
+        {/* Lead Time Information and CDS Side by Side - Full Width Centered */}
+        {result && result.is_alert && (() => {
+          // Calculate specific lead time based on risk score and values
+          const riskScore = result.risk_score;
+          const lactate = formData.Lactate || 0;
+          const lactateTrend = result.feature_breakdown?.lactate_trend || 0;
+          const creatinine = formData.Creatinine || 0;
+          
+          // Determine case severity
+          const isSevere = riskScore > 0.50 || lactate > 4.0 || creatinine > 2.0;
+          const isMild = riskScore >= 0.30 && riskScore <= 0.50 && lactate <= 4.0 && creatinine <= 2.0;
+          
+          // Calculate specific lead time based on case
+          let leadTimeMin, leadTimeMax, caseType, caseColor, caseDescription;
+          
+          if (isSevere) {
+            // Severe case: 6-8 hours, but can be adjusted based on lactate
+            leadTimeMin = lactate > 4.0 ? 5.5 : 6.0;
+            leadTimeMax = lactate > 4.0 ? 7.5 : 8.0;
+            caseType = "Severe Case";
+            caseColor = "text-red-600";
+            caseDescription = "Critical intervention window - Immediate action required";
+          } else if (isMild) {
+            // Mild case: 4-6 hours
+            leadTimeMin = 4.0;
+            leadTimeMax = 6.0;
+            caseType = "Mild Case";
+            caseColor = "text-yellow-600";
+            caseDescription = "Early warning window - Monitor closely";
+          } else {
+            // Default for moderate risk
+            leadTimeMin = 5.0;
+            leadTimeMax = 7.0;
+            caseType = "Moderate Risk";
+            caseColor = "text-amber-600";
+            caseDescription = "Moderate risk - Proactive intervention recommended";
+          }
+          
+          // Calculate average for this specific case
+          const specificLeadTime = ((leadTimeMin + leadTimeMax) / 2).toFixed(1);
+          
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="mt-12 max-w-6xl mx-auto"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Lead Time Information */}
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border-2 border-amber-200 shadow-xl p-6">
+                  <h3 className="text-lg font-bold text-[#1a3c5e] mb-4 flex items-center gap-2">
+                    <Clock size={20} />
+                    Early Detection Lead Time
+                  </h3>
+                  <div className="space-y-4">
+                    {/* Specific Case Lead Time */}
+                    <div className="bg-white p-4 rounded-lg border-2 border-amber-300">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-slate-700">Detected Case Type</span>
+                        <span className={`text-sm font-bold ${caseColor} px-2 py-1 rounded bg-white`}>
+                          {caseType}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mb-2 mt-3">
+                        <span className="text-sm font-semibold text-slate-700">Estimated Lead Time</span>
+                        <span className={`text-2xl font-bold ${caseColor}`}>
+                          {leadTimeMin}-{leadTimeMax} hours
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-slate-500">Average for this case</span>
+                        <span className={`text-lg font-bold ${caseColor}`}>
+                          {specificLeadTime} hours
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-2 pt-2 border-t border-amber-200">
+                        {caseDescription}
+                      </p>
+                    </div>
+                    
+                    {/* Key Factors */}
+                    <div className="bg-white p-3 rounded-lg border border-amber-200">
+                      <div className="text-xs font-bold text-slate-500 mb-2">Key Factors:</div>
+                      <div className="space-y-1 text-xs text-slate-600">
+                        <div>Risk Score: <span className="font-bold">{result.risk_percentage}%</span></div>
+                        <div>Lactate: <span className="font-bold">{lactate} mmol/L</span> {lactateTrend > 0 && <span className="text-red-600">(↑{lactateTrend.toFixed(2)})</span>}</div>
+                        <div>Creatinine: <span className="font-bold">{creatinine} mg/dL</span></div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-amber-100 p-3 rounded border border-amber-300">
+                      <p className="text-xs text-amber-800">
+                        <strong>Clinical Impact:</strong> This early detection provides clinicians with sufficient time to initiate the Sepsis Bundle (blood cultures, antibiotics, fluid resuscitation) before the patient's condition deteriorates.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              {/* Clinical Decision Support - Compact Version */}
+              <div className="bg-white rounded-xl border-2 border-amber-200 shadow-xl overflow-hidden">
+                <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-4 text-white">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Stethoscope size={20} />
+                    <h3 className="text-lg font-bold">Treatment Protocol</h3>
+                  </div>
+                  <p className="text-amber-50 text-xs">
+                    Surviving Sepsis Campaign guidelines
+                  </p>
+                </div>
+                <div className="p-4">
+                  {/* Source Selection */}
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-700 mb-2">
+                      Suspected Source?
+                    </label>
+                    <select
+                      value={suspectedSource}
+                      onChange={(e) => setSuspectedSource(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm font-semibold text-[#1a3c5e] focus:border-[#1a3c5e] focus:ring-1 focus:ring-[#1a3c5e] outline-none"
+                    >
+                      <option value="Unknown">Unknown</option>
+                      <option value="Lungs (Pneumonia)">Lungs (Pneumonia)</option>
+                      <option value="Urinary (UTI)">Urinary (UTI)</option>
+                      <option value="Abdominal">Abdominal</option>
+                      <option value="Skin/Soft Tissue">Skin/Soft Tissue</option>
+                    </select>
+                  </div>
+
+                  {/* Treatment Suggestions */}
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                    <h4 className="text-sm font-bold text-[#1a3c5e] mb-3 flex items-center gap-2">
+                      <Pill size={16} />
+                      Protocol Checklist
+                    </h4>
+                    <ul className="space-y-2">
+                      {getClinicalSuggestions(
+                        result.risk_score,
+                        formData.Lactate || 0,
+                        suspectedSource
+                      ).map((suggestion, idx) => (
+                        <li key={idx} className="flex items-start gap-2 p-2 bg-white rounded border border-slate-200 text-xs">
+                          <span className="text-sm">{suggestion.split(' ')[0]}</span>
+                          <span className="text-slate-700 flex-1">{suggestion.substring(suggestion.indexOf(' ') + 1)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Disclaimer */}
+                  <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                    <strong>⚠️ Important:</strong> AI suggestions are for guidance only. Confirm with hospital formulary and check patient allergies.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+          );
+        })()}
+
       </div>
     </div>
   );

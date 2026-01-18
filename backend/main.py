@@ -205,6 +205,7 @@ class PatientData(BaseModel):
 
 class SeverityData(BaseModel):
     model_config = ConfigDict(extra="allow")
+    # Vitals
     HR: float = 75.0
     O2Sat: float = 98.0
     Temp: float = 37.0
@@ -212,15 +213,51 @@ class SeverityData(BaseModel):
     DBP: float = 80.0
     MAP: float = 90.0
     Resp: float = 16.0
+    # Lab Markers
     WBC: float = 7.0
     Platelets: float = 250.0
     Lactate: float = 1.0
+    Hgb: float = 14.0
+    Hct: float = 42.0
+    PTT: float = 30.0
+    Fibrinogen: float = 300.0
+    TroponinI: float = 0.01
+    Magnesium: float = 2.0
+    Phosphate: float = 3.5
+    Bilirubin_total: float = 0.8
+    # Lab Chemistry
     Creatinine: float = 1.0
     Glucose: float = 100.0
+    pH: float = 7.4
+    HCO3: float = 24.0
+    BaseExcess: float = 0.0
+    FiO2: float = 21.0
+    PaCO2: float = 40.0
+    EtCO2: float = 35.0
+    SaO2: float = 98.0
+    Chloride: float = 100.0
+    Calcium: float = 9.5
+    Potassium: float = 4.0
+    AST: float = 25.0
+    BUN: float = 15.0
+    Alkalinephos: float = 80.0
+    Bilirubin_direct: float = 0.2
+    # Demographics/Info
     Age: float = 50.0
+    Gender: float = 1.0
+    ICULOS: float = 0.0
+    Hour: float = 0.0
+    SOFA_score: float = 0.0
+    SOFA_cardio: float = 0.0
+    Shock_Index: float = 0.67
+    MAP_Calc: float = 90.0
+    HospAdmTime: float = 0.0
+    Unit1: float = 0.0
+    Unit2: float = 0.0
 
 # UI Key to Model Column Mapping
 UI_MAP = {
+    # Vitals
     'HR': 'heart_rate',
     'SBP': 'systolic_bp',
     'DBP': 'diastolic_bp',
@@ -228,12 +265,23 @@ UI_MAP = {
     'O2Sat': 'oxygen_saturation',
     'Temp': 'temperature',
     'Resp': 'respiratory_rate',
+    
+    # Lab Markers
     'WBC': 'leukocytes',
     'Platelets': 'thrombocytes',
     'Lactate': 'lactate',
+    'Hgb': 'hemoglobin',
+    'Hct': 'hematocrit',
+    'PTT': 'partial_thromboplastin_time',
+    'Fibrinogen': 'fibrinogen',
+    'TroponinI': 'troponin_i',
+    'Magnesium': 'magnesium',
+    'Phosphate': 'phosphate',
+    'Bilirubin_total': 'total_bilirubin',
+    
+    # Lab Chemistry
     'Glucose': 'blood_glucose',
     'Creatinine': 'creatinine',
-    'Age': 'age',
     'pH': 'arterial_ph',
     'HCO3': 'bicarbonate',
     'BaseExcess': 'base_excess',
@@ -244,7 +292,23 @@ UI_MAP = {
     'Chloride': 'chloride',
     'Calcium': 'calcium',
     'Potassium': 'potassium',
-    'Hgb': 'hemoglobin'
+    'AST': 'aspartate_aminotransferase',
+    'BUN': 'blood_urea_nitrogen',
+    'Alkalinephos': 'alkaline_phosphatase',
+    'Bilirubin_direct': 'direct_bilirubin',
+    
+    # Demographics/Info
+    'Age': 'age',
+    'Gender': 'gender',
+    'ICULOS': 'iculos',
+    'Hour': 'hour',
+    'SOFA_score': 'sofa_score',
+    'SOFA_cardio': 'sofa_cardio',
+    'Shock_Index': 'shock_index',
+    'MAP_Calc': 'map_calc',
+    'HospAdmTime': 'hosp_adm_time',
+    'Unit1': 'unit1',
+    'Unit2': 'unit2',
 }
 
 _EARLY_VITALS_DEFAULTS = {
@@ -275,18 +339,50 @@ async def predict_severity(data: SeverityData):
         
         # B. Apply Clinical Bridge (Z-Score Scaling)
         print("\n--- NEW PREDICTION REQUEST ---")
+        skipped_fields = []
+        mapped_fields = []
+        
         for ui_key, value in data_dict.items():
+            # Skip non-numeric fields and metadata
+            if ui_key in ['model_config'] or value is None:
+                continue
+                
             col = UI_MAP.get(ui_key)
             target_col = None
+            
+            # Try mapped name first
             if col and col in input_df.columns:
                 target_col = col
+            # Try direct match (case-sensitive)
             elif ui_key in input_df.columns:
-                # allow sending model-native feature names directly
                 target_col = ui_key
+            # Try case-insensitive match
+            else:
+                for df_col in input_df.columns:
+                    if df_col.lower() == ui_key.lower():
+                        target_col = df_col
+                        break
+                # Try matching with common variations
+                if target_col is None:
+                    ui_lower = ui_key.lower()
+                    for df_col in input_df.columns:
+                        df_lower = df_col.lower()
+                        # Try matching with underscores/spaces removed
+                        if ui_lower.replace('_', '').replace('-', '') == df_lower.replace('_', '').replace('-', ''):
+                            target_col = df_col
+                            break
+                        # Try partial match for common patterns
+                        if ui_lower in df_lower or df_lower in ui_lower:
+                            if len(ui_lower) > 3 and len(df_lower) > 3:  # Avoid false matches
+                                target_col = df_col
+                                break
 
             if target_col is None:
+                skipped_fields.append(ui_key)
                 continue
-
+            
+            mapped_fields.append(f"{ui_key} -> {target_col}")
+            
             # Apply clinical bridge scaling if available (z-score)
             if isinstance(clinical_bridge, dict) and target_col in clinical_bridge:
                 stats = clinical_bridge.get(target_col, None)
@@ -294,11 +390,19 @@ async def predict_severity(data: SeverityData):
                     mean = float(stats.get('mean'))
                     std = float(stats.get('std'))
                     std = std if std != 0 else 1.0
-                    input_df[target_col] = (float(value) - mean) / std
-                except Exception:
+                    scaled_value = (float(value) - mean) / std
+                    input_df[target_col] = scaled_value
+                    print(f"  ✓ {ui_key} ({value}) -> {target_col} (scaled: {scaled_value:.3f})")
+                except Exception as e:
                     input_df[target_col] = float(value)
+                    print(f"  ✓ {ui_key} ({value}) -> {target_col} (direct, scaling failed: {e})")
             else:
                 input_df[target_col] = float(value)
+                print(f"  ✓ {ui_key} ({value}) -> {target_col} (direct)")
+        
+        if skipped_fields:
+            print(f"  ⚠️ WARNING: Skipped fields (not found in model): {', '.join(skipped_fields)}")
+        print(f"  ✅ Successfully mapped {len(mapped_fields)} fields")
 
         # C. Execute AI Prediction
         # Ensure column order matches training exactly to avoid ValueError
@@ -318,20 +422,51 @@ async def predict_severity(data: SeverityData):
         is_clinical_override = False
         override_reason = None
 
-        # Check for critical danger zones
+        # Check for critical danger zones (including lab markers and lab chemistry)
         sofa_score = float(getattr(data, "SOFA_score", 0.0) or 0.0)
+        lactate = float(getattr(data, "Lactate", 0.0) or 0.0)
+        creatinine = float(getattr(data, "Creatinine", 0.0) or 0.0)
+        wbc = float(getattr(data, "WBC", 0.0) or 0.0)
+        platelets = float(getattr(data, "Platelets", 0.0) or 0.0)
+        bilirubin_total = float(getattr(data, "Bilirubin_total", 0.0) or 0.0)
+        troponin = float(getattr(data, "TroponinI", 0.0) or 0.0)
+        bun = float(getattr(data, "BUN", 0.0) or 0.0)
+        
         is_critical = (
+            # Vitals
             data.HR > 130 or 
             data.SBP < 85 or 
-            data.Lactate > 4.0 or 
             data.O2Sat < 88 or
+            # Lab Markers (critical for sepsis)
+            lactate > 4.0 or
+            wbc > 20.0 or
+            wbc < 4.0 or
+            platelets < 100.0 or
+            troponin > 0.5 or
+            # Lab Chemistry (critical for sepsis)
+            creatinine > 2.0 or
+            bilirubin_total > 3.0 or
+            bun > 40.0 or
+            # SOFA Score
             sofa_score >= 10
         )
 
         if raw_prediction == 0 and is_critical:
             final_prediction = 2
             is_clinical_override = True
-            override_reason = "GUARDRAIL: Critical vitals detected (AI was too optimistic)."
+            critical_findings = []
+            if data.HR > 130: critical_findings.append(f"HR={data.HR}")
+            if data.SBP < 85: critical_findings.append(f"SBP={data.SBP}")
+            if data.O2Sat < 88: critical_findings.append(f"O2Sat={data.O2Sat}")
+            if lactate > 4.0: critical_findings.append(f"Lactate={lactate}")
+            if wbc > 20.0 or wbc < 4.0: critical_findings.append(f"WBC={wbc}")
+            if platelets < 100.0: critical_findings.append(f"Platelets={platelets}")
+            if creatinine > 2.0: critical_findings.append(f"Creatinine={creatinine}")
+            if bilirubin_total > 3.0: critical_findings.append(f"Bilirubin={bilirubin_total}")
+            if bun > 40.0: critical_findings.append(f"BUN={bun}")
+            if troponin > 0.5: critical_findings.append(f"TroponinI={troponin}")
+            if sofa_score >= 10: critical_findings.append(f"SOFA={sofa_score}")
+            override_reason = f"GUARDRAIL: Critical values detected ({', '.join(critical_findings[:3])})."
         
         # E. Final Severity Mapping
         severity_labels = ["Healthy", "Mild Sepsis", "Severe/Critical"]

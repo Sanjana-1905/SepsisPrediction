@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import Tesseract from 'tesseract.js';
 import { 
-  Upload, Activity, AlertTriangle, FileText, CheckCircle, Loader2, Eye 
+  Upload, Activity, AlertTriangle, FileText, CheckCircle, Loader2, Eye, Pill, Stethoscope
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
@@ -42,9 +42,63 @@ const getDefaultFormData = () => ({
 });
 
 const presetValues = {
-  healthy: { HR: 72, SBP: 120, O2Sat: 98, Lactate: 1.0, Temp: 37.0, WBC: 7.0, SOFA_score: 0 },
-  mild: { HR: 105, SBP: 105, O2Sat: 94, Lactate: 2.5, Temp: 38.8, WBC: 14.0, SOFA_score: 7 },
-  severe: { HR: 155, SBP: 75, O2Sat: 84, Lactate: 7.8, Temp: 40.2, WBC: 38.0, SOFA_score: 16 }
+  healthy: { 
+    HR: 72, SBP: 120, DBP: 80, MAP: 90, O2Sat: 98, Temp: 37.0, Resp: 18,
+    EtCO2: 35, BaseExcess: 0, HCO3: 24, FiO2: 21, pH: 7.4, PaCO2: 40, SaO2: 98,
+    AST: 25, BUN: 15, Alkalinephos: 80, Calcium: 9.5, Chloride: 100, Creatinine: 1.0,
+    Bilirubin_direct: 0.2, Glucose: 100,
+    Lactate: 1.0, Magnesium: 2.0, Phosphate: 3.5, Potassium: 4.0, Bilirubin_total: 0.8,
+    TroponinI: 0.01, Hct: 42, Hgb: 14, PTT: 30, WBC: 7.0, Fibrinogen: 300, Platelets: 250,
+    SOFA_score: 0 
+  },
+  mild: { 
+    HR: 105, SBP: 105, DBP: 70, MAP: 82, O2Sat: 94, Temp: 38.8, Resp: 22,
+    EtCO2: 32, BaseExcess: -3, HCO3: 21, FiO2: 28, pH: 7.35, PaCO2: 38, SaO2: 94,
+    AST: 45, BUN: 25, Alkalinephos: 120, Calcium: 8.8, Chloride: 98, Creatinine: 1.5,
+    Bilirubin_direct: 0.5, Glucose: 140,
+    Lactate: 2.5, Magnesium: 1.8, Phosphate: 3.0, Potassium: 4.5, Bilirubin_total: 1.5,
+    TroponinI: 0.15, Hct: 38, Hgb: 12, PTT: 35, WBC: 14.0, Fibrinogen: 400, Platelets: 180,
+    SOFA_score: 7 
+  },
+  severe: { 
+    HR: 155, SBP: 75, DBP: 50, MAP: 58, O2Sat: 84, Temp: 40.2, Resp: 28,
+    EtCO2: 28, BaseExcess: -8, HCO3: 18, FiO2: 50, pH: 7.25, PaCO2: 32, SaO2: 84,
+    AST: 120, BUN: 55, Alkalinephos: 200, Calcium: 7.5, Chloride: 95, Creatinine: 2.8,
+    Bilirubin_direct: 2.5, Glucose: 180,
+    Lactate: 7.8, Magnesium: 1.5, Phosphate: 2.2, Potassium: 5.2, Bilirubin_total: 4.5,
+    TroponinI: 1.2, Hct: 28, Hgb: 9, PTT: 50, WBC: 38.0, Fibrinogen: 600, Platelets: 80,
+    SOFA_score: 16 
+  }
+};
+
+// Clinical Decision Support Function
+const getClinicalSuggestions = (riskScore, lactateVal, suspectedSource = "Unknown") => {
+  const suggestions = [];
+  
+  // 1. General Sepsis Bundle (Always triggered if risk >= 0.30)
+  if (riskScore >= 0.30) {
+    suggestions.push("🔹 Order Blood Cultures (before antibiotics).");
+    suggestions.push("🔹 Measure/Repeat Lactate level.");
+  }
+  
+  // 2. Specific Action based on Lactate Rise
+  if (lactateVal >= 2.0) {
+    suggestions.push("🔹 Initiate fluid resuscitation: 30mL/kg crystalloid.");
+  }
+  
+  // 3. Antibiotic Logic based on Clinician Input
+  const antibioticMap = {
+    "Lungs (Pneumonia)": "Ceftriaxone + Azithromycin",
+    "Urinary (UTI)": "Ciprofloxacin or Ceftriaxone",
+    "Abdominal": "Piperacillin/Tazobactam (Zosyn)",
+    "Skin/Soft Tissue": "Vancomycin",
+    "Unknown": "Vancomycin + Zosyn (Broad Spectrum Coverage)"
+  };
+  
+  const rx = antibioticMap[suspectedSource] || "Consult ID Specialist";
+  suggestions.push(`💊 Suggested Antibiotics: ${rx}`);
+  
+  return suggestions;
 };
 
 export default function Prediction() {
@@ -55,6 +109,7 @@ export default function Prediction() {
   const [activeTab, setActiveTab] = useState('Vitals');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [debugText, setDebugText] = useState('');
+  const [suspectedSource, setSuspectedSource] = useState('Unknown');
 
   const getPrimaryProbKey = (res) => {
     const pred = Number(res?.prediction);
@@ -218,7 +273,7 @@ export default function Prediction() {
             <p className="text-slate-500 mt-2">Enter patient biomarkers manually or upload a lab report.</p>
           </div>
           <div className="flex gap-2 mt-4 md:mt-0">
-             <button onClick={() => loadPreset('healthy')} className="px-3 py-1 text-xs font-bold border border-green-500 text-green-700 rounded hover:bg-green-50">HEALTHY PRESET</button>
+             <button onClick={() => loadPreset('healthy')} className="px-3 py-1 text-xs font-bold border border-green-500 text-green-700 rounded hover:bg-green-50">LOW RISK PRESET</button>
              <button onClick={() => loadPreset('mild')} className="px-3 py-1 text-xs font-bold border border-yellow-500 text-yellow-700 rounded hover:bg-yellow-50">MILD PRESET</button>
              <button onClick={() => loadPreset('severe')} className="px-3 py-1 text-xs font-bold border border-red-500 text-red-700 rounded hover:bg-red-50">CRITICAL PRESET</button>
           </div>
@@ -348,6 +403,8 @@ export default function Prediction() {
                      const primaryValue = Number(result?.probabilities?.[primaryKey] ?? 0);
                      const primaryLabel = primaryKey === 'healthy' ? 'Healthy' : primaryKey === 'mild' ? 'Mild' : 'Severe';
                      const primaryFill = primaryKey === 'healthy' ? '#059669' : primaryKey === 'mild' ? '#f59e0b' : '#dc2626';
+                     // Calculate endAngle based on percentage: 180 (start) to 0 (end), so 50% = 90 degrees
+                     const endAngle = 180 - (primaryValue / 100) * 180;
 
                      return (
                    <div className="h-48 w-full relative min-h-[200px]">
@@ -358,9 +415,14 @@ export default function Prediction() {
                           barSize={20} 
                           data={[{ name: 'prob', value: primaryValue, fill: primaryFill }]} 
                           startAngle={180} 
-                          endAngle={0}
+                          endAngle={endAngle}
                         >
-                          <RadialBar dataKey="value" cornerRadius={10} background={{ fill: '#e2e8f0' }} />
+                          <RadialBar 
+                            dataKey="value" 
+                            cornerRadius={10} 
+                            background={{ fill: '#e2e8f0' }}
+                            minAngle={0}
+                          />
                         </RadialBarChart>
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
@@ -401,6 +463,74 @@ export default function Prediction() {
           </div>
 
         </div>
+
+        {/* Clinical Decision Support System */}
+        {result && (result.severity.includes('Mild') || result.severity.includes('Severe') || result.severity.includes('Critical')) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mt-12 bg-white rounded-xl border-2 border-amber-200 shadow-xl overflow-hidden"
+          >
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-6 text-white">
+              <div className="flex items-center gap-3 mb-2">
+                <Stethoscope size={24} />
+                <h2 className="text-2xl font-bold">Clinical Decision Support</h2>
+              </div>
+              <p className="text-amber-50 text-sm">
+                Treatment protocol checklist based on Surviving Sepsis Campaign guidelines
+              </p>
+            </div>
+
+            <div className="p-6">
+              {/* Source Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  Suspected Source of Infection?
+                </label>
+                <select
+                  value={suspectedSource}
+                  onChange={(e) => setSuspectedSource(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-3 font-semibold text-[#1a3c5e] focus:border-[#1a3c5e] focus:ring-2 focus:ring-[#1a3c5e] outline-none"
+                >
+                  <option value="Unknown">Unknown</option>
+                  <option value="Lungs (Pneumonia)">Lungs (Pneumonia)</option>
+                  <option value="Urinary (UTI)">Urinary (UTI)</option>
+                  <option value="Abdominal">Abdominal</option>
+                  <option value="Skin/Soft Tissue">Skin/Soft Tissue</option>
+                </select>
+              </div>
+
+              {/* Treatment Suggestions */}
+              <div className="bg-slate-50 rounded-lg p-6 border border-slate-200">
+                <h3 className="text-lg font-bold text-[#1a3c5e] mb-4 flex items-center gap-2">
+                  <Pill size={20} />
+                  Protocol Checklist
+                </h3>
+                <ul className="space-y-3">
+                  {getClinicalSuggestions(
+                    result.probabilities.severe / 100, // Convert to risk score
+                    formData.Lactate || 0,
+                    suspectedSource
+                  ).map((suggestion, idx) => (
+                    <li key={idx} className="flex items-start gap-3 p-3 bg-white rounded border border-slate-200">
+                      <span className="text-lg">{suggestion.split(' ')[0]}</span>
+                      <span className="text-sm text-slate-700 flex-1">{suggestion.substring(suggestion.indexOf(' ') + 1)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Disclaimer */}
+              <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-xs text-yellow-800">
+                  <strong>⚠️ Important:</strong> AI suggestions are for guidance only. Confirm with hospital formulary, check patient allergies, and consult with infectious disease specialist when appropriate. This system follows Surviving Sepsis Campaign guidelines but should not replace clinical judgment.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
       </div>
     </div>
   );

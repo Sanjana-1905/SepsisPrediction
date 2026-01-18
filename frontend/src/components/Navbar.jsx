@@ -16,8 +16,8 @@ export default function Navbar() {
             <ShieldAlert size={28} />
           </div>
           <div className="flex flex-col">
-            <span className="text-2xl font-serif font-bold text-[#1a3c5e] tracking-tight">NOVAGUARD</span>
-            <span className="text-xs uppercase tracking-widest text-slate-500 font-medium">Clinical Biomarker Engine</span>
+            <span className="text-2xl font-serif font-bold text-[#1a3c5e] tracking-tight">SEPSIS PREDICTION</span>
+            
           </div>
         </Link>
         
