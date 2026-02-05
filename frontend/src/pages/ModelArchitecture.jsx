@@ -6,12 +6,10 @@ import {
   ZoomIn, X, Server, CheckCircle, Clock, AlertTriangle
 } from 'lucide-react';
 
-// Images - Severity Diagnosis
+// Images - Reorganized for interchange
 import matrixImg from '../assets/analytics/matrix.jpeg';
 import featuresImg from '../assets/analytics/features.jpeg';
 import separationImg from '../assets/analytics/separation.jpeg';
-
-// Images - Early Detection  
 import rocImg from '../assets/analytics/roc.jpeg';
 import correlationImg from '../assets/analytics/correlation.jpeg';
 import performanceImg from '../assets/analytics/performance.jpeg';
@@ -94,9 +92,9 @@ export default function ModelArchitecture() {
             fadeInUp={fadeInUp} 
             staggerContainer={staggerContainer} 
             ImageCard={ImageCard}
-            rocImg={rocImg}
-            correlationImg={correlationImg}
-            performanceImg={performanceImg}
+            rocImg={matrixImg}
+            correlationImg={separationImg}
+            performanceImg={featuresImg}
           />
         )}
 
@@ -108,9 +106,9 @@ export default function ModelArchitecture() {
             fadeInUp={fadeInUp} 
             staggerContainer={staggerContainer} 
             ImageCard={ImageCard} 
-            matrixImg={matrixImg} 
-            separationImg={separationImg} 
-            featuresImg={featuresImg}
+            matrixImg={rocImg} 
+            separationImg={correlationImg} 
+            featuresImg={performanceImg}
           />
         )}
 
@@ -145,7 +143,7 @@ export default function ModelArchitecture() {
 }
 
 // Early Detection Architecture Component
-function EarlyDetectionArchitecture({ selectedImage, setSelectedImage, fadeInUp, staggerContainer, ImageCard, rocImg, correlationImg, performanceImg}) {
+function EarlyDetectionArchitecture({ selectedImage, setSelectedImage, fadeInUp, staggerContainer, ImageCard, rocImg, correlationImg, performanceImg }) {
   return (
     <>
       {/* Section 1: Golden Window Logic */}
@@ -432,21 +430,22 @@ function EarlyDetectionArchitecture({ selectedImage, setSelectedImage, fadeInUp,
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
           <ImageCard 
-            title="Multi-Class ROC" 
+            title="Confusion Matrix"  
+            tagColor="text-green-600"
             src={rocImg} 
-            desc="Performance curves indicating the trade-off between sensitivity and specificity for each class."
+            desc="Shows high diagonal density, proving correct classification across all 3 severity levels."
             onClick={() => setSelectedImage(rocImg)}
           />
           <ImageCard 
-            title="Biomarker Correlation" 
+            title="Risk Probability Split" 
             src={correlationImg} 
-            desc="Heatmap revealing physiological relationships (e.g., Mean BP vs Diastolic BP) used for feature engineering."
+            desc="Demonstrates clear divergence (~74%) between Healthy (green) and Severe (red) patient probabilities."
             onClick={() => setSelectedImage(correlationImg)}
           />
           <ImageCard 
-            title="Class-wise F1 Scores" 
+            title="Clinical Drivers" 
             src={performanceImg} 
-            desc="Consistent high performance across classes: Healthy (0.94), Mild (0.92), Severe (0.96)."
+            desc="Lactate, Heart Rate, and Leukocytes identified as strongest statistical predictors of severity."
             onClick={() => setSelectedImage(performanceImg)}
           />
         </motion.div>
@@ -681,23 +680,21 @@ function SeverityArchitecture({ selectedImage, setSelectedImage, fadeInUp, stagg
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
           <ImageCard 
-            title="Confusion Matrix" 
-            tag="94% Accuracy" 
-            tagColor="text-green-600"
+            title="Multi-Class ROC" 
             src={matrixImg} 
-            desc="Shows high diagonal density, proving correct classification across all 3 severity levels."
+            desc="Performance curves indicating the trade-off between sensitivity and specificity for each class."
             onClick={() => setSelectedImage(matrixImg)}
           />
           <ImageCard 
-            title="Risk Probability Split" 
+            title="Biomarker Correlation" 
             src={separationImg} 
-            desc="Demonstrates clear divergence (~74%) between Healthy (green) and Severe (red) patient probabilities."
+            desc="Heatmap revealing physiological relationships (e.g., Mean BP vs Diastolic BP) used for feature engineering."
             onClick={() => setSelectedImage(separationImg)}
           />
           <ImageCard 
-            title="Clinical Drivers" 
+            title="Class-wise F1 Scores" 
             src={featuresImg} 
-            desc="Lactate, Heart Rate, and Leukocytes identified as the strongest statistical predictors of severity."
+            desc="Consistent high performance across classes: Healthy (0.94), Mild (0.92), Severe (0.96)."
             onClick={() => setSelectedImage(featuresImg)}
           />
         </motion.div>
@@ -724,12 +721,16 @@ function ImageCard({ title, tag, tagColor, src, desc, onClick }) {
           <span>{title}</span>
           {tag && <span className={tagColor || 'text-slate-500'}>{tag}</span>}
       </div>
-      <div className="relative overflow-hidden h-48 bg-slate-100">
-        <img 
-          src={src} 
-          alt={title} 
-          className="w-full h-full object-contain group-hover:scale-105 transition duration-500" 
-        />
+      <div className="relative overflow-hidden h-48 bg-slate-100 flex items-center justify-center">
+        {src ? (
+          <img 
+            src={src} 
+            alt={title} 
+            className="max-w-full max-h-full object-contain group-hover:scale-105 transition duration-500" 
+          />
+        ) : (
+          <div className="text-slate-400 text-xs text-center p-4">Image not found</div>
+        )}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
           <ZoomIn className="text-white drop-shadow-md" size={32} />
         </div>

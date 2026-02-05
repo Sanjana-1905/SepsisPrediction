@@ -96,7 +96,7 @@ const getClinicalSuggestions = (riskScore, lactateVal, suspectedSource = "Unknow
   };
   
   const rx = antibioticMap[suspectedSource] || "Consult ID Specialist";
-  suggestions.push(`💊 Suggested Antibiotics: ${rx}`);
+  suggestions.push(`🔹 Suggested Antibiotics: ${rx}`);
   
   return suggestions;
 };
@@ -524,7 +524,7 @@ export default function Prediction() {
               {/* Disclaimer */}
               <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-xs text-yellow-800">
-                  <strong>⚠️ Important:</strong> AI suggestions are for guidance only. Confirm with hospital formulary, check patient allergies, and consult with infectious disease specialist when appropriate. This system follows Surviving Sepsis Campaign guidelines but should not replace clinical judgment.
+                  <strong> Important:</strong> AI suggestions are for guidance only. Confirm with hospital formulary, check patient allergies, and consult with infectious disease specialist when appropriate. This system follows Surviving Sepsis Campaign guidelines but should not replace clinical judgment.
                 </p>
               </div>
             </div>
