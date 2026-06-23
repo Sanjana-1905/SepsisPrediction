@@ -71,6 +71,8 @@ logs
 .env.test.local
 .env.production.local
 
+backend/venv/
+
 # Testing
 .coverage
 htmlcov/

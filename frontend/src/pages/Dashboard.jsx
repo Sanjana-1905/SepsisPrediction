@@ -30,7 +30,7 @@ export default function Dashboard() {
             transition={{ delay: 0.2 }}
             className="text-lg md:text-xl text-slate-200 max-w-2xl mb-10 font-light"
           >
-            Leveraging high-frequency physiological data and Calibrated Logistic Regression to predict sepsis severity across Healthy, Mild, and Septic Shock classes.
+            Leveraging high-frequency physiological data and a Calibrated XGBoost Ensemble to predict sepsis severity across Healthy, Mild, and Septic Shock classes.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}

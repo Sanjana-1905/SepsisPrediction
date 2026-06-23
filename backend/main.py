@@ -59,6 +59,40 @@ class SepsisPredictor:
         if est is not None and hasattr(est, "predict_proba"):
             return est.predict_proba(X)
 
+        weights = getattr(self, "weights", None)
+        feature_min_max = getattr(self, "feature_min_max", None)
+        
+        if isinstance(weights, dict) and isinstance(feature_min_max, dict):
+            X_arr = np.asarray(X)
+            results = []
+            for row in X_arr:
+                p_max_raw = float(row[0])
+                lac_max_raw = float(row[1])
+                lac_trend_raw = float(row[2])
+                creat_max_raw = float(row[3])
+                
+                def scale_val(val, key):
+                    limits = feature_min_max.get(key)
+                    if limits:
+                        min_v, max_v = limits
+                        return max(0.0, min(1.0, (val - min_v) / (max_v - min_v) if max_v != min_v else 0.0))
+                    return val
+                
+                p_max_scaled = scale_val(p_max_raw, 'p_max')
+                lac_max_scaled = scale_val(lac_max_raw, 'lac_max')
+                lac_trend_scaled = scale_val(lac_trend_raw, 'lac_trend')
+                creat_max_scaled = scale_val(creat_max_raw, 'creat_max')
+                
+                score = (
+                    weights.get('p_max', 0.25) * p_max_scaled +
+                    weights.get('lac_max', 0.45) * lac_max_scaled +
+                    weights.get('lac_trend', 0.2) * lac_trend_scaled +
+                    weights.get('creat_max', 0.1) * creat_max_scaled
+                )
+                results.append(score)
+            
+            return np.array([[1.0 - r, r] for r in results])
+
         X_arr = np.asarray(X)
         n = int(X_arr.shape[0]) if X_arr.ndim >= 1 else 1
         return np.tile(np.array([[0.5, 0.5]]), (n, 1))
@@ -93,7 +127,7 @@ async def _log_routes_on_startup():
         methods = getattr(r, "methods", None)
         if methods:
             routes.append({"path": getattr(r, "path", ""), "methods": sorted(list(methods))})
-    print("✅ Registered routes:")
+    print("Registered routes:")
     for item in routes:
         print(f"  {item['methods']}  {item['path']}")
 
@@ -108,38 +142,38 @@ base_vitals_model = None
 
 # 4. Load Artifacts (Optimized for Bridge Scaling)
 try:
-    if os.path.exists("sepsis_honest_73_balanced.pkl"):
-        severity_model = joblib.load("sepsis_honest_73_balanced.pkl")
-        print("✅ SUCCESS: Loaded Severity Model: sepsis_honest_73_balanced.pkl")
-    elif os.path.exists("sepsis_balanced_70_70.pkl"):
-        severity_model = joblib.load("sepsis_balanced_70_70.pkl")
-        print("✅ SUCCESS: Loaded Severity Model: sepsis_balanced_70_70.pkl")
-    elif os.path.exists("sepsis_severity_model_FINAL_3CLASS.pkl"):
-        severity_model = joblib.load("sepsis_severity_model_FINAL_3CLASS.pkl")
-        print("✅ SUCCESS: Loaded Severity Model: sepsis_severity_model_FINAL_3CLASS.pkl")
+    if os.path.exists("models/sepsis_honest_73_balanced.pkl"):
+        severity_model = joblib.load("models/sepsis_honest_73_balanced.pkl")
+        print("SUCCESS: Loaded Severity Model: models/sepsis_honest_73_balanced.pkl")
+    elif os.path.exists("models/sepsis_balanced_70_70.pkl"):
+        severity_model = joblib.load("models/sepsis_balanced_70_70.pkl")
+        print("SUCCESS: Loaded Severity Model: models/sepsis_balanced_70_70.pkl")
+    elif os.path.exists("models/sepsis_severity_model_FINAL_3CLASS.pkl"):
+        severity_model = joblib.load("models/sepsis_severity_model_FINAL_3CLASS.pkl")
+        print("SUCCESS: Loaded Severity Model: models/sepsis_severity_model_FINAL_3CLASS.pkl")
     else:
-        print("❌ CRITICAL: No severity model found (expected sepsis_balanced_70_70.pkl).")
+        print("CRITICAL: No severity model found (expected models/sepsis_honest_73_balanced.pkl).")
 
-    if os.path.exists("sepsis_scaler.pkl"):
+    if os.path.exists("models/sepsis_scaler.pkl"):
         try:
-            severity_scaler = joblib.load("sepsis_scaler.pkl")
-            print("✅ SUCCESS: Loaded Severity Scaler: sepsis_scaler.pkl")
+            severity_scaler = joblib.load("models/sepsis_scaler.pkl")
+            print("SUCCESS: Loaded Severity Scaler: models/sepsis_scaler.pkl")
         except Exception as e:
-            print(f"⚠️ WARNING: Could not load sepsis_scaler.pkl: {e}")
+            print(f"WARNING: Could not load models/sepsis_scaler.pkl: {e}")
 
-    if os.path.exists("healthy_medians.pkl"):
+    if os.path.exists("models/healthy_medians.pkl"):
         try:
-            healthy_medians = joblib.load("healthy_medians.pkl")
-            print("✅ SUCCESS: Loaded Healthy Medians: healthy_medians.pkl")
+            healthy_medians = joblib.load("models/healthy_medians.pkl")
+            print("SUCCESS: Loaded Healthy Medians: models/healthy_medians.pkl")
         except Exception as e:
-            print(f"⚠️ WARNING: Could not load healthy_medians.pkl: {e}")
+            print(f"WARNING: Could not load models/healthy_medians.pkl: {e}")
 
-    if os.path.exists("clinical_bridge.pkl"):
+    if os.path.exists("models/clinical_bridge.pkl"):
         try:
-            clinical_bridge = joblib.load("clinical_bridge.pkl")
-            print("✅ SUCCESS: Loaded Clinical Bridge: clinical_bridge.pkl")
+            clinical_bridge = joblib.load("models/clinical_bridge.pkl")
+            print("SUCCESS: Loaded Clinical Bridge: models/clinical_bridge.pkl")
         except Exception as e:
-            print(f"⚠️ WARNING: Could not load clinical_bridge.pkl: {e}")
+            print(f"WARNING: Could not load models/clinical_bridge.pkl: {e}")
 
     try:
         if severity_model is not None and hasattr(severity_model, "feature_names_in_"):
@@ -153,37 +187,42 @@ try:
         severity_feature_names = None
     if not severity_feature_names and isinstance(healthy_medians, dict):
         severity_feature_names = list(healthy_medians.keys())
-    if not severity_feature_names and os.path.exists("feature_names.pkl"):
-        severity_feature_names = joblib.load("feature_names.pkl")
+    if not severity_feature_names and os.path.exists("models/feature_names.pkl"):
+        severity_feature_names = joblib.load("models/feature_names.pkl")
     if severity_feature_names:
-        print(f"✅ SUCCESS: Severity feature count = {len(severity_feature_names)}")
+        print(f"SUCCESS: Severity feature count = {len(severity_feature_names)}")
 except Exception as e:
-    print(f"❌ ERROR: Artifact loading failed: {e}")
+    print(f"ERROR: Artifact loading failed: {e}")
 
 # Load Sepsis Early Warning System Models
 try:
-    if os.path.exists("sepsis_decision_engine.pkl"):
+    import sys
+    main_module = sys.modules.get('__main__')
+    if main_module and not hasattr(main_module, 'SepsisPredictor'):
+        setattr(main_module, 'SepsisPredictor', SepsisPredictor)
+
+    if os.path.exists("models/sepsis_decision_engine.pkl"):
         try:
-            sepsis_decision_engine = joblib.load("sepsis_decision_engine.pkl")
-            print("✅ SUCCESS: Loaded Sepsis Decision Engine.")
+            sepsis_decision_engine = joblib.load("models/sepsis_decision_engine.pkl")
+            print("SUCCESS: Loaded Sepsis Decision Engine.")
         except Exception as e:
-            print(f"⚠️ WARNING: Could not load sepsis_decision_engine.pkl: {e}")
+            print(f"WARNING: Could not load models/sepsis_decision_engine.pkl: {e}")
             # Create fallback decision engine
             sepsis_decision_engine = None
     
-    base_vitals_candidates = ["base_vitals_model.pkl", "base_vitals_model .pkl"]
+    base_vitals_candidates = ["models/base_vitals_model.pkl", "models/base_vitals_model .pkl"]
     base_vitals_path = next((p for p in base_vitals_candidates if os.path.exists(p)), None)
     if base_vitals_path:
         try:
             base_vitals_model = joblib.load(base_vitals_path)
-            print(f"✅ SUCCESS: Loaded Base Vitals Model: {base_vitals_path}")
+            print(f"SUCCESS: Loaded Base Vitals Model: {base_vitals_path}")
         except Exception as e:
-            print(f"⚠️ WARNING: Could not load base_vitals_model ({base_vitals_path}): {e}")
+            print(f"WARNING: Could not load base_vitals_model ({base_vitals_path}): {e}")
             base_vitals_model = None
     else:
-        print("⚠️ WARNING: base_vitals_model not found (expected base_vitals_model.pkl)")
+        print("WARNING: base_vitals_model not found (expected models/base_vitals_model.pkl)")
 except Exception as e:
-    print(f"⚠️ WARNING: Sepsis Early Warning models loading failed: {e}")
+    print(f"WARNING: Sepsis Early Warning models loading failed: {e}")
 
 # 5. Data Schema
 class PatientData(BaseModel):
@@ -324,56 +363,41 @@ _EARLY_VITALS_DEFAULTS = {
 # 6. Severity Prediction Route
 @app.post("/severity")
 async def predict_severity(data: SeverityData):
-    print(f"🔍 DEBUG: /severity endpoint called, model loaded: {severity_model is not None}")
     if severity_model is None or not severity_feature_names:
         raise HTTPException(status_code=500, detail="Severity model artifacts not loaded.")
 
     try:
-        # Convert Pydantic model to dict
         data_dict = data.model_dump()
-        print(f"🔍 DEBUG: Received data: {data_dict}")
-
-        # Build baseline in normalized feature space.
-        # If the model was trained on z-scored features, using zeros is a neutral baseline.
         input_df = pd.DataFrame(np.zeros((1, len(severity_feature_names))), columns=severity_feature_names)
         
-        # B. Apply Clinical Bridge (Z-Score Scaling)
-        print("\n--- NEW PREDICTION REQUEST ---")
         skipped_fields = []
         mapped_fields = []
         
         for ui_key, value in data_dict.items():
-            # Skip non-numeric fields and metadata
             if ui_key in ['model_config'] or value is None:
                 continue
                 
             col = UI_MAP.get(ui_key)
             target_col = None
             
-            # Try mapped name first
             if col and col in input_df.columns:
                 target_col = col
-            # Try direct match (case-sensitive)
             elif ui_key in input_df.columns:
                 target_col = ui_key
-            # Try case-insensitive match
             else:
                 for df_col in input_df.columns:
                     if df_col.lower() == ui_key.lower():
                         target_col = df_col
                         break
-                # Try matching with common variations
                 if target_col is None:
                     ui_lower = ui_key.lower()
                     for df_col in input_df.columns:
                         df_lower = df_col.lower()
-                        # Try matching with underscores/spaces removed
                         if ui_lower.replace('_', '').replace('-', '') == df_lower.replace('_', '').replace('-', ''):
                             target_col = df_col
                             break
-                        # Try partial match for common patterns
                         if ui_lower in df_lower or df_lower in ui_lower:
-                            if len(ui_lower) > 3 and len(df_lower) > 3:  # Avoid false matches
+                            if len(ui_lower) > 3 and len(df_lower) > 3:
                                 target_col = df_col
                                 break
 
@@ -382,93 +406,36 @@ async def predict_severity(data: SeverityData):
                 continue
             
             mapped_fields.append(f"{ui_key} -> {target_col}")
-            
-            # Apply clinical bridge scaling if available (z-score)
-            if isinstance(clinical_bridge, dict) and target_col in clinical_bridge:
-                stats = clinical_bridge.get(target_col, None)
-                try:
-                    mean = float(stats.get('mean'))
-                    std = float(stats.get('std'))
-                    std = std if std != 0 else 1.0
-                    scaled_value = (float(value) - mean) / std
-                    input_df[target_col] = scaled_value
-                    print(f"  ✓ {ui_key} ({value}) -> {target_col} (scaled: {scaled_value:.3f})")
-                except Exception as e:
-                    input_df[target_col] = float(value)
-                    print(f"  ✓ {ui_key} ({value}) -> {target_col} (direct, scaling failed: {e})")
-            else:
-                input_df[target_col] = float(value)
-                print(f"  ✓ {ui_key} ({value}) -> {target_col} (direct)")
+            input_df[target_col] = float(value)
         
-        if skipped_fields:
-            print(f"  ⚠️ WARNING: Skipped fields (not found in model): {', '.join(skipped_fields)}")
-        print(f"  ✅ Successfully mapped {len(mapped_fields)} fields")
-
-        # C. Execute AI Prediction
-        # Ensure column order matches training exactly to avoid ValueError
-        if severity_scaler is not None and not hasattr(severity_model, "named_steps") and hasattr(severity_scaler, "transform"):
-            try:
-                scaled = severity_scaler.transform(input_df[severity_feature_names])
-                input_df = pd.DataFrame(scaled, columns=severity_feature_names)
-            except Exception as e:
-                print(f"⚠️ WARNING: Severity scaling skipped: {e}")
-
+        # Run inference using raw features (as expected by sepsis_honest_73_balanced.pkl)
         probs = severity_model.predict_proba(input_df)[0]
         raw_prediction = int(np.argmax(probs))
-        print(f"🔍 DEBUG: Raw prediction: {raw_prediction}, Probabilities: {probs}")
         
-        # D. Clinical Guardrails (Override logic)
+        # Clinical Guardrails (Override logic)
         final_prediction = raw_prediction
         is_clinical_override = False
         override_reason = None
 
-        # Check for critical danger zones (including lab markers and lab chemistry)
-        sofa_score = float(getattr(data, "SOFA_score", 0.0) or 0.0)
         lactate = float(getattr(data, "Lactate", 0.0) or 0.0)
-        creatinine = float(getattr(data, "Creatinine", 0.0) or 0.0)
-        wbc = float(getattr(data, "WBC", 0.0) or 0.0)
-        platelets = float(getattr(data, "Platelets", 0.0) or 0.0)
-        bilirubin_total = float(getattr(data, "Bilirubin_total", 0.0) or 0.0)
-        troponin = float(getattr(data, "TroponinI", 0.0) or 0.0)
-        bun = float(getattr(data, "BUN", 0.0) or 0.0)
+        age = float(getattr(data, "Age", 0.0) or 0.0)
+        sbp = float(getattr(data, "SBP", 0.0) or 0.0)
         
         is_critical = (
-            # Vitals
-            data.HR > 130 or 
-            data.SBP < 85 or 
-            data.O2Sat < 88 or
-            # Lab Markers (critical for sepsis)
             lactate > 4.0 or
-            wbc > 20.0 or
-            wbc < 4.0 or
-            platelets < 100.0 or
-            troponin > 0.5 or
-            # Lab Chemistry (critical for sepsis)
-            creatinine > 2.0 or
-            bilirubin_total > 3.0 or
-            bun > 40.0 or
-            # SOFA Score
-            sofa_score >= 10
+            (age >= 65.0 and sbp < 60.0)
         )
 
-        if raw_prediction == 0 and is_critical:
+        if raw_prediction < 2 and is_critical:
             final_prediction = 2
             is_clinical_override = True
             critical_findings = []
-            if data.HR > 130: critical_findings.append(f"HR={data.HR}")
-            if data.SBP < 85: critical_findings.append(f"SBP={data.SBP}")
-            if data.O2Sat < 88: critical_findings.append(f"O2Sat={data.O2Sat}")
-            if lactate > 4.0: critical_findings.append(f"Lactate={lactate}")
-            if wbc > 20.0 or wbc < 4.0: critical_findings.append(f"WBC={wbc}")
-            if platelets < 100.0: critical_findings.append(f"Platelets={platelets}")
-            if creatinine > 2.0: critical_findings.append(f"Creatinine={creatinine}")
-            if bilirubin_total > 3.0: critical_findings.append(f"Bilirubin={bilirubin_total}")
-            if bun > 40.0: critical_findings.append(f"BUN={bun}")
-            if troponin > 0.5: critical_findings.append(f"TroponinI={troponin}")
-            if sofa_score >= 10: critical_findings.append(f"SOFA={sofa_score}")
-            override_reason = f"GUARDRAIL: Critical values detected ({', '.join(critical_findings[:3])})."
+            if lactate > 4.0:
+                critical_findings.append(f"Lactate={lactate}")
+            if age >= 65.0 and sbp < 60.0:
+                critical_findings.append(f"Age={age}, SBP={sbp}")
+            override_reason = f"GUARDRAIL: Critical values detected ({', '.join(critical_findings)})."
         
-        # E. Final Severity Mapping
         severity_labels = ["Healthy", "Mild Sepsis", "Severe/Critical"]
         
         result = {
@@ -489,11 +456,10 @@ async def predict_severity(data: SeverityData):
             }
         }
         
-        print(f"🔍 DEBUG: Returning result: {result}")
         return result
 
     except Exception as e:
-        print(f"❌ ERROR: Prediction failed: {e}")
+        print(f"ERROR: Prediction failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -517,7 +483,7 @@ class SepsisEarlyWarningData(BaseModel):
 # 8. Health Check Route
 @app.get("/")
 async def root():
-    print("🔍 DEBUG: Health check endpoint called")
+    print("DEBUG: Health check endpoint called")
     return {
         "message": "Sepsis Prediction API",
         "endpoints": {
@@ -542,37 +508,39 @@ async def test():
 # 9. Sepsis Early Warning Route
 @app.post("/sepsis-warning")
 async def sepsis_early_warning(data: SepsisEarlyWarningData):
-    # Allow fallback calculation even if models aren't loaded
-    use_fallback = sepsis_decision_engine is None or base_vitals_model is None
-
-    # If the decision engine unpickled as the placeholder wrapper and it has no real estimator inside,
-    # don't use it (it will return constant 0.5). Use the existing clinical fallback instead.
+    if base_vitals_model is None:
+        raise HTTPException(status_code=500, detail="Base vitals model not loaded.")
+    if sepsis_decision_engine is None:
+        raise HTTPException(status_code=500, detail="Sepsis decision engine not loaded.")
+    
+    # Verify decision engine is valid
+    is_decision_engine_valid = True
     try:
         if (
-            sepsis_decision_engine is not None
-            and sepsis_decision_engine.__class__.__name__ == "SepsisPredictor"
+            sepsis_decision_engine.__class__.__name__ == "SepsisPredictor"
             and hasattr(sepsis_decision_engine, "_unwrap_estimator")
             and sepsis_decision_engine._unwrap_estimator() is None
+            and not (hasattr(sepsis_decision_engine, "weights") and hasattr(sepsis_decision_engine, "feature_min_max"))
         ):
-            use_fallback = True
+            is_decision_engine_valid = False
     except Exception:
-        pass
-    
-    if use_fallback:
-        print("⚠️ WARNING: Using fallback calculation - models not loaded")
+        is_decision_engine_valid = False
+        
+    if not is_decision_engine_valid:
+        raise HTTPException(status_code=500, detail="Loaded sepsis decision engine has no valid estimator or weights.")
     
     try:
         # Step 1: Transform raw vitals through base_vitals_model to get Prob
         # Build a vitals feature vector that matches the trained base_vitals_model
         base_feature_names = getattr(base_vitals_model, 'feature_names_in_', None) if base_vitals_model is not None else None
         base_expected = getattr(base_vitals_model, 'n_features_in_', None) if base_vitals_model is not None else None
-
+ 
         # Derive MAP if possible
         default_dbp = float(_EARLY_VITALS_DEFAULTS["DBP"])
         map_calc = (float(data.SBP) + 2.0 * default_dbp) / 3.0
-
+ 
         shock_index = (float(data.HR) / float(data.SBP)) if float(data.SBP) else 0.0
-
+ 
         vitals_candidates = {
             # UI keys
             "HR": float(data.HR),
@@ -597,52 +565,83 @@ async def sepsis_early_warning(data: SepsisEarlyWarningData):
             "sbp": float(data.SBP),
             "hr": float(data.HR),
         }
-
+ 
         if base_feature_names is not None and len(base_feature_names) > 0:
-            vitals_input = np.array([[float(vitals_candidates.get(str(name), 0.0)) for name in base_feature_names]])
+            # Scale vitals using baseline statistics to prevent RandomForest out-of-bounds constant prediction
+            scaling = {
+                'HR': {'mean': 85.0, 'std': 20.0},
+                'O2Sat': {'mean': 96.0, 'std': 4.0},
+                'Temp': {'mean': 37.0, 'std': 1.0},
+                'SBP': {'mean': 115.0, 'std': 25.0},
+                'MAP': {'mean': 90.0, 'std': 15.0},
+                'DBP': {'mean': 80.0, 'std': 15.0},
+                'Resp': {'mean': 18.0, 'std': 5.0}
+            }
+            if isinstance(clinical_bridge, dict):
+                mapping = {
+                    'HR': 'heart_rate',
+                    'SBP': 'systolic_bp',
+                    'Temp': 'temperature',
+                    'O2Sat': 'oxygen_saturation'
+                }
+                for k, bridge_k in mapping.items():
+                    if bridge_k in clinical_bridge:
+                        scaling[k] = {
+                            'mean': float(clinical_bridge[bridge_k].get('mean', scaling[k]['mean'])),
+                            'std': float(clinical_bridge[bridge_k].get('std', scaling[k]['std']))
+                        }
+            
+            scaled_vals = []
+            for name in base_feature_names:
+                val = float(vitals_candidates.get(str(name), 0.0))
+                if name in scaling:
+                    mean = scaling[name]['mean']
+                    std = scaling[name]['std']
+                    scaled_val = (val - mean) / (std if std != 0 else 1.0)
+                    scaled_vals.append(scaled_val)
+                else:
+                    scaled_vals.append(val)
+            vitals_input = np.array([scaled_vals])
         elif base_expected is not None and int(base_expected) == 7:
-            vitals_input = np.array([[
-                float(vitals_candidates["HR"]),
-                float(vitals_candidates["Temp"]),
-                float(vitals_candidates["SBP"]),
-                float(vitals_candidates["DBP"]),
-                float(vitals_candidates["MAP"]),
-                float(vitals_candidates["O2Sat"]),
-                float(vitals_candidates["Resp"]),
-            ]])
+            scaling_ordered = [
+                ('HR', 85.0, 20.0),
+                ('Temp', 37.0, 1.0),
+                ('SBP', 115.0, 25.0),
+                ('DBP', 80.0, 15.0),
+                ('MAP', 90.0, 15.0),
+                ('O2Sat', 96.0, 4.0),
+                ('Resp', 18.0, 5.0)
+            ]
+            scaled_vals = []
+            keys = ["HR", "Temp", "SBP", "DBP", "MAP", "O2Sat", "Resp"]
+            for i, key in enumerate(keys):
+                val = float(vitals_candidates[key])
+                name, mean, std = scaling_ordered[i]
+                if isinstance(clinical_bridge, dict):
+                    bridge_k = {'HR': 'heart_rate', 'SBP': 'systolic_bp', 'Temp': 'temperature', 'O2Sat': 'oxygen_saturation'}.get(key)
+                    if bridge_k and bridge_k in clinical_bridge:
+                        mean = float(clinical_bridge[bridge_k].get('mean', mean))
+                        std = float(clinical_bridge[bridge_k].get('std', std))
+                scaled_val = (val - mean) / (std if std != 0 else 1.0)
+                scaled_vals.append(scaled_val)
+            vitals_input = np.array([scaled_vals])
         else:
             vitals_input = np.array([[float(data.HR), float(data.Temp), float(data.SBP)]])
-        can_use_base = (
-            not use_fallback and
-            base_vitals_model is not None and
-            (base_expected is None or int(base_expected) == int(vitals_input.shape[1]))
-        )
-        if can_use_base:
-            try:
-                if hasattr(base_vitals_model, 'predict_proba'):
-                    probs = base_vitals_model.predict_proba(vitals_input)[0]
-                    vitals_prob = probs[1] if len(probs) > 1 else probs[0]
-                else:
-                    # Fallback: use a simple heuristic based on vitals
-                    hr_risk = abs(data.HR - 80) / 100.0
-                    temp_risk = abs(data.Temp - 37.0) / 3.0
-                    sbp_risk = max(0, (120 - data.SBP) / 120.0) if data.SBP < 120 else 0
-                    vitals_prob = min(1.0, (hr_risk + temp_risk + sbp_risk) / 3.0)
-            except Exception as e:
-                print(f"Warning: Could not use base_vitals_model, using fallback: {e}")
-                # Fallback calculation
-                hr_risk = abs(data.HR - 80) / 100.0
-                temp_risk = abs(data.Temp - 37.0) / 3.0
-                sbp_risk = max(0, (120 - data.SBP) / 120.0) if data.SBP < 120 else 0
-                vitals_prob = min(1.0, (hr_risk + temp_risk + sbp_risk) / 3.0)
+ 
+        if base_expected is not None and int(base_expected) != int(vitals_input.shape[1]):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Base vitals model expects {int(base_expected)} features but got {int(vitals_input.shape[1])}."
+            )
+ 
+        if hasattr(base_vitals_model, 'predict_proba'):
+            probs = base_vitals_model.predict_proba(vitals_input)[0]
+            vitals_prob = probs[1] if len(probs) > 1 else probs[0]
         else:
-            if base_expected is not None and int(base_expected) != int(vitals_input.shape[1]):
-                print(f"⚠️ WARNING: base_vitals_model expects {int(base_expected)} features but got {int(vitals_input.shape[1])}; using fallback")
-            # Fallback calculation when models not usable
-            hr_risk = abs(data.HR - 80) / 100.0
-            temp_risk = abs(data.Temp - 37.0) / 3.0
-            sbp_risk = max(0, (120 - data.SBP) / 120.0) if data.SBP < 120 else 0
-            vitals_prob = min(1.0, (hr_risk + temp_risk + sbp_risk) / 3.0)
+            raise HTTPException(
+                status_code=500,
+                detail="Loaded base vitals model does not support predict_proba."
+            )
         
         # Step 2: Calculate Clinical Lab Features
         lactate_max = max(data.Lactate, data.Baseline_Lactate)  # Highest lactate reading
@@ -655,34 +654,20 @@ async def sepsis_early_warning(data: SepsisEarlyWarningData):
         
         # Step 4: Get risk score from decision engine
         # The decision engine should return a probability/risk score
-        if not use_fallback and sepsis_decision_engine is not None:
-            try:
-                if hasattr(sepsis_decision_engine, 'predict_proba'):
-                    # Standard sklearn model
-                    probs = sepsis_decision_engine.predict_proba(features)[0]
-                    risk_score = probs[1] if len(probs) > 1 else probs[0]
-                elif hasattr(sepsis_decision_engine, 'predict'):
-                    # Try predict method - might return probability directly
-                    pred = sepsis_decision_engine.predict(features)[0]
-                    risk_score = float(pred)
-                else:
-                    # Try calling as a function (custom class)
-                    risk_score = float(sepsis_decision_engine(features))
-            except Exception as e:
-                print(f"Warning: Could not use standard predict methods, using fallback: {e}")
-                # Fallback: use a simple weighted combination
-                risk_score = (vitals_prob * 0.4 + min(lactate_max / 4.0, 1.0) * 0.3 + 
-                             max(lactate_trend / 2.0, 0) * 0.2 + min(creatinine_max / 2.0, 1.0) * 0.1)
+        if hasattr(sepsis_decision_engine, 'predict_proba'):
+            probs = sepsis_decision_engine.predict_proba(features)[0]
+            risk_score = probs[1] if len(probs) > 1 else probs[0]
+        elif hasattr(sepsis_decision_engine, 'predict'):
+            pred = sepsis_decision_engine.predict(features)[0]
+            risk_score = float(pred)
         else:
-            # Fallback: use a simple weighted combination when models not loaded
-            risk_score = (vitals_prob * 0.4 + min(lactate_max / 4.0, 1.0) * 0.3 + 
-                         max(lactate_trend / 2.0, 0) * 0.2 + min(creatinine_max / 2.0, 1.0) * 0.1)
+            risk_score = float(sepsis_decision_engine(features))
         
         # Ensure risk_score is between 0 and 1
         risk_score = max(0.0, min(1.0, float(risk_score)))
         
         # Step 5: Determine status based on 0.30 threshold
-        status = "Patient Stable" if risk_score < 0.30 else "🚨 SEPSIS ALERT: INITIATE PROTOCOL"
+        status = "Patient Stable" if risk_score < 0.30 else "SEPSIS ALERT: INITIATE PROTOCOL"
         is_alert = risk_score >= 0.30
         
         # Step 6: Feature breakdown - identify which factor is driving the risk
@@ -728,16 +713,16 @@ async def sepsis_early_warning(data: SepsisEarlyWarningData):
                 "Creatinine": data.Creatinine
             },
             "model_status": {
-                "using_fallback": use_fallback,
+                "using_fallback": False,
                 "models_loaded": {
-                    "sepsis_decision_engine": sepsis_decision_engine is not None,
-                    "base_vitals_model": base_vitals_model is not None
+                    "sepsis_decision_engine": True,
+                    "base_vitals_model": True
                 }
             }
         }
     
     except Exception as e:
-        print(f"❌ ERROR: Sepsis Early Warning failed: {e}")
+        print(f"ERROR: Sepsis Early Warning failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

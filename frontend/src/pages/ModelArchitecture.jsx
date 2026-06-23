@@ -11,6 +11,7 @@ import matrixImg from '../assets/analytics/matrix.jpeg';
 import featuresImg from '../assets/analytics/features.jpeg';
 import separationImg from '../assets/analytics/separation.jpeg';
 import rocImg from '../assets/analytics/roc.jpeg';
+import bpmSeverityImg from '../assets/analytics/BPM vs Severity.jpeg';
 import correlationImg from '../assets/analytics/correlation.jpeg';
 import performanceImg from '../assets/analytics/performance.jpeg';
 
@@ -106,7 +107,7 @@ export default function ModelArchitecture() {
             fadeInUp={fadeInUp} 
             staggerContainer={staggerContainer} 
             ImageCard={ImageCard} 
-            matrixImg={rocImg} 
+            matrixImg={bpmSeverityImg} 
             separationImg={correlationImg} 
             featuresImg={performanceImg}
           />
@@ -550,33 +551,33 @@ function SeverityArchitecture({ selectedImage, setSelectedImage, fadeInUp, stagg
         className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 mb-8"
       >
         <h2 className="text-2xl font-bold text-[#1a3c5e] mb-6 flex items-center gap-3">
-          <Brain className="text-[#1a3c5e]" /> 3. Calibrated Logistic Regression
+          <Brain className="text-[#1a3c5e]" /> 3. Calibrated XGBoost Ensemble
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
           <div>
             <p className="text-slate-600 leading-relaxed mb-4">
-              We chose <strong>Calibrated Logistic Regression</strong> to prioritize explainability. In clinical settings, we must know <em>why</em> a risk score is high.
+              We chose a <strong>Calibrated XGBoost Ensemble</strong> to prioritize non-linear boundary modeling and optimize triage accuracy. In clinical settings, we must know <em>why</em> a risk score is high.
             </p>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <div className="bg-blue-100 p-2 rounded text-[#1a3c5e]"><Scale size={18}/></div>
                 <div>
-                  <h4 className="font-bold text-[#1a3c5e] text-sm">Class Weighting (Balanced)</h4>
-                  <p className="text-xs text-slate-500 mt-1">Mathematically penalizes missing a "Severe" case.</p>
+                  <h4 className="font-bold text-[#1a3c5e] text-sm">Gradient Boosting Trees</h4>
+                  <p className="text-xs text-slate-500 mt-1">Iteratively trains tree structures to focus on misclassified critical patient paths.</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="bg-blue-100 p-2 rounded text-[#1a3c5e]"><Activity size={18}/></div>
                 <div>
-                  <h4 className="font-bold text-[#1a3c5e] text-sm">"Glass Box" Interpretability</h4>
-                  <p className="text-xs text-slate-500 mt-1">Risk scores are tied to specific coefficients.</p>
+                  <h4 className="font-bold text-[#1a3c5e] text-sm">Tree-Based Explainability</h4>
+                  <p className="text-xs text-slate-500 mt-1">Risk scores are derived from path traversal importances of clinical biomarkers.</p>
                 </div>
               </div>
             </div>
           </div>
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 flex flex-col justify-center">
             <div className="flex justify-between items-center mb-2 text-sm font-bold text-slate-700">
-              <span>Input Coefficients</span>
+              <span>Feature Importance</span>
               <span>Risk Output</span>
             </div>
             <div className="space-y-2">
@@ -589,7 +590,7 @@ function SeverityArchitecture({ selectedImage, setSelectedImage, fadeInUp, stagg
                 ></motion.div>
               </div>
               <div className="flex justify-between text-xs text-slate-500">
-                <span>Lactate Contribution</span>
+                <span>Lactate Importance</span>
                 <span className="text-red-600 font-bold">+ High Impact</span>
               </div>
             </div>
@@ -680,9 +681,9 @@ function SeverityArchitecture({ selectedImage, setSelectedImage, fadeInUp, stagg
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
           <ImageCard 
-            title="Multi-Class ROC" 
+            title="Heart Rate Distribution" 
             src={matrixImg} 
-            desc="Performance curves indicating the trade-off between sensitivity and specificity for each class."
+            desc="Box plot illustrating z-scored heart rate variations across clinical stages, showing rising cardiovascular stress in septic states."
             onClick={() => setSelectedImage(matrixImg)}
           />
           <ImageCard 
