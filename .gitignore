@@ -44,6 +44,7 @@ wheels/
 
 # ML Models & Large Data (Optional - Keep if you use Git LFS)
 *.pkl
+!backend/models/*.pkl
 *.joblib
 *.h5
 *.pt
